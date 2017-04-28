@@ -1,0 +1,24 @@
+canvas {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+
+  box-shadow: 0px 3px 10px rgba(0, 0, 0, 0.1);
+}
+
+body {
+  background-color: #E9FCD9;
+}
+
+.title {
+  text-align: center;
+  color: black;
+  font-size: 40px;
+  font-family: 'Baloo', cursive;
+
+  text-shadow: 0px 5px 15px rgba(0, 0, 0, 0.1);
+
+  -webkit-user-select: none; /* Chrome/Safari */        
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* IE10+ */
+}

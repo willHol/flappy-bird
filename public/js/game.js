@@ -222,9 +222,20 @@ const prePlaySetup = () => {
     state = play;
     renderer.view.removeEventListener('click', starter);
   });
+  document.addEventListener('keypress', function starter() {
+    if (event.keyCode === 32) {
+      state = play;
+      renderer.view.removeEventListener('keypress', starter);
+    }
+  });
 
-  // Add the listener for flying action
+  // Add the listeners for flying action
   renderer.view.addEventListener('click', flyClickHandler);
+  document.addEventListener('keypress', (event) => {
+    if (event.keyCode === 32) {
+      flyClickHandler();
+    }
+  });
 
   state = prePlay;
 };

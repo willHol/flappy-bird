@@ -53,10 +53,10 @@ const birdAnimationStatesIterator = {
 const OPEN_SPACE_HEIGHT = 201;
 const MAX_ROTATION = Math.PI / 2 - 0.2;
 const MIN_ROTATION = -Math.PI / 10;
-const PIPE_SEPARATION = renderer.width * 1;
+const PIPE_SEPARATION = renderer.width * 0.5;
 
 let gameSpeed = 1;
-let currentGapSize = 67;
+let currentGapSize = 50;
 
 
 class Throttler {
@@ -89,46 +89,56 @@ const flyClickHandler = () => {
   bird.vy = -2.5;
 };
 
+const flySpaceHandler = (event) => {
+  if (event.keyCode === 32) {
+    flyClickHandler();
+  }
+};
+
+const generatePipeContainer = (center) => {
+  const pipeContainer = new Container();
+  const upPipe = new Sprite(id['up-green-pipe.png']);
+  const downPipe = new Sprite(id['down-green-pipe.png']);
+
+  upPipe.x = 0;
+  upPipe.y = center - (currentGapSize / 2) - upPipe.height;
+  upPipe.vx = -gameSpeed;
+  downPipe.x = 0;
+  downPipe.y = center + (currentGapSize / 2);
+  downPipe.vx = -gameSpeed;
+  pipeContainer.addChild(upPipe);
+  pipeContainer.addChild(downPipe);
+
+  return pipeContainer;
+};
+
 const generatePipes = () => {
   // Abort if a pipe has not left the screen
-  if (pipes.length > 0 && pipes[0].x < -(id['down-green-pipe.png'].width)) {
+  if (pipes[0].x < -(id['down-green-pipe.png'].width)) {
+    pipes.splice(0, 1);
     return;
   }
 
-  const generationXStart = pipes.length > 0 ? pipes.slice(-1)[0].x : renderer.width;
-  const generationXEnd = renderer.width * 2;
-  let currentPosition = generationXStart;
+  const stopGeneratingAt = renderer.width * 2;
+  const centerPoint = Math.random() * ((OPEN_SPACE_HEIGHT - currentGapSize) - (currentGapSize)) + currentGapSize;
+  let currentPosition = pipes.slice(-1)[0].x + PIPE_SEPARATION;
 
-  while (currentPosition < generationXEnd) {
-    // Generate a random center point
-    const center = (Math.random() * (OPEN_SPACE_HEIGHT - 40)) + 40;
-
-    // Generate a pipe pair + container
-    const pipeContainer = new Container();
-    const pipeUp = new Sprite(id['up-green-pipe.png']);
-    const pipeDown = new Sprite(id['down-green-pipe.png']);
-    pipeContainer.addChild(pipeUp);
-    pipeContainer.addChild(pipeDown);
-
-    // Position the pipes
+  while (currentPosition < stopGeneratingAt) {
+    const pipeContainer = generatePipeContainer(centerPoint, currentPosition);
     pipeContainer.x = currentPosition;
-    pipeContainer.height = OPEN_SPACE_HEIGHT;
-    pipeUp.y = center + (currentGapSize / 2);
-    pipeDown.y = center - (currentGapSize / 2) - pipeDown.height;
 
-    // Add the pipes to the stage and array
-    pipes.unshift(pipeContainer);
+    pipes.push(pipeContainer);
     stage.addChild(pipeContainer);
-    pipeContainer.x -= 200;
+    // Move the floor to the front
+    stage.setChildIndex(floor, stage.children.length - 1);
 
-    // Increment currentPosition
     currentPosition += PIPE_SEPARATION;
   }
 };
 
-const animatePipes = (gameSpeed) => {
+const animatePipes = (speed) => {
   pipes.forEach((pipe) => {
-    pipe.x -= gameSpeed;
+    pipe.x -= speed;
   });
 };
 
@@ -157,20 +167,6 @@ const animateBirdPlay = () => {
     bird.rotation -= 0.4;
   }
 
-  // Check if the bird has collided with the ground
-  if (bird.y + (bird.height / 2) > OPEN_SPACE_HEIGHT) {
-    // YOU LOST!!
-    bird.y = OPEN_SPACE_HEIGHT - (bird.height / 2);
-    bird.vy = 0;
-    gameSpeed = 0;
-
-    // Remove the fly click listener
-    renderer.view.removeEventListener('click', flyClickHandler);
-
-    // Activate the game state
-    // state = lost;
-  }
-
   // Check if the bird has collided with the ceiling
   if (bird.y - (bird.height / 2) < 0) {
     bird.y = bird.height / 2;
@@ -178,11 +174,42 @@ const animateBirdPlay = () => {
   }
 };
 
+const checkCollisions = () => {
+  let collided = false;
+
+  // Check if the bird has collided with the ground
+  if (bird.y + (bird.height / 2) > OPEN_SPACE_HEIGHT) {
+    // YOU LOST!!
+    bird.y = OPEN_SPACE_HEIGHT - (bird.height / 2);
+    collided = true;
+  }
+
+  // Check if the bird has collided with a pipe
+  const birdRightX = bird.x + bird.width / 2;
+  const birdLeftX = bird.x - bird.width / 2;
+  const birdTopY = bird.y - bird.height / 2;
+  const birdBottomY = bird.y + bird.height / 2;
+
+  pipes.forEach((pipe) => {
+    // Between pipe space in X
+    if (birdRightX > pipe.x && birdLeftX < pipe.x + pipe.width) {
+      const upPipe = pipe.children[0];
+      const downPipe = pipe.children[1];
+
+      if (birdTopY < downPipe.getGlobalPosition().y - currentGapSize - 1 || birdBottomY > upPipe.getGlobalPosition().y + upPipe.height + currentGapSize + 1) {
+        collided = true;
+      }
+    }
+  });
+
+  return collided;
+};
+
 
 const animateGround = (speed) => {
   floor.x -= speed;
 
-  if (floor.x < -24) {
+  if (floor.x < -23) {
     floor.x = 0;
   }
 };
@@ -195,10 +222,7 @@ const prePlay = () => {
   animateGround(gameSpeed);
 
   // Generate some pipes
-  
-
-  // Animate pipes
-  
+  generatePipes();
 };
 
 const play = () => {
@@ -208,8 +232,26 @@ const play = () => {
   // Animate the floor
   animateGround(gameSpeed);
 
-  // Animate the pipes
-  
+  // Generate some pipes
+  generatePipes();
+
+  // Animate pipes
+  animatePipes(gameSpeed);
+
+  // Check for collisions
+  if (checkCollisions() === true) {
+    state = lost;
+  }
+};
+
+const lost = () => {
+  bird.ay = 0;
+    bird.vy = 0;
+    gameSpeed = 0;
+
+    // Remove the fly click listener
+    renderer.view.removeEventListener('click', flyClickHandler);
+    document.removeEventListener('keypress', flySpaceHandler);
 };
 
 /**
@@ -225,17 +267,13 @@ const prePlaySetup = () => {
   document.addEventListener('keypress', function starter() {
     if (event.keyCode === 32) {
       state = play;
-      renderer.view.removeEventListener('keypress', starter);
+      document.removeEventListener('keypress', starter);
     }
   });
 
   // Add the listeners for flying action
   renderer.view.addEventListener('click', flyClickHandler);
-  document.addEventListener('keypress', (event) => {
-    if (event.keyCode === 32) {
-      flyClickHandler();
-    }
-  });
+  document.addEventListener('keypress', flySpaceHandler);
 
   state = prePlay;
 };
@@ -265,6 +303,12 @@ const init = () => {
   bird.vy = 0;
   bird.ay = 0.1;
   stage.addChild(bird);
+
+  // Adds a pipe
+  const pipeContainer = generatePipeContainer(OPEN_SPACE_HEIGHT / 2);
+  pipeContainer.x = renderer.width;
+  pipes.push(pipeContainer);
+  stage.addChild(pipeContainer);
 
   state = prePlaySetup;
 

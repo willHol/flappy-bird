@@ -13,15 +13,19 @@ const renderer = PIXI.autoDetectRenderer(
 renderer.autoResize = true;
 
 const stage = new Container();
+let scoreContainer;
 let id;
 let state;
+let gameTime;
+let isDay;
 
 // Sprites
 let background;
+let darkBackground;
 let bird;
 let floor;
-
-const pipes = [];
+let gameOver;
+let pipes;
 
 const birdAnimationStates = [
   'yellow-bird-1.png',
@@ -53,11 +57,14 @@ const birdAnimationStatesIterator = {
 const OPEN_SPACE_HEIGHT = 201;
 const MAX_ROTATION = Math.PI / 2 - 0.2;
 const MIN_ROTATION = -Math.PI / 10;
-const PIPE_SEPARATION = renderer.width * 0.5;
+const DAY_LENGTH = 1000;
 
+let PIPE_SEPARATION = renderer.width * 1;
 let gameSpeed = 1;
-let currentGapSize = 50;
-
+let currentGapSize = 70;
+let gameScore = 0;
+let lastPipe;
+let animationId;
 
 class Throttler {
   constructor() {
@@ -78,7 +85,7 @@ class Throttler {
 const birdThrottler = new Throttler();
 
 const gameLoop = () => {
-  requestAnimationFrame(gameLoop);
+  animationId = requestAnimationFrame(gameLoop);
 
   state();
 
@@ -86,7 +93,7 @@ const gameLoop = () => {
 };
 
 const flyClickHandler = () => {
-  bird.vy = -2.5;
+  bird.vy = -2.75;
 };
 
 const flySpaceHandler = (event) => {
@@ -162,7 +169,7 @@ const animateBirdPlay = () => {
 
   // Animate the bird's rotation
   if (bird.vy > 0 && bird.rotation < MAX_ROTATION) {
-    bird.rotation += 0.05 * bird.vy;
+    bird.rotation += 0.04 * bird.vy;
   } else if (bird.vy < 0 && bird.rotation > MIN_ROTATION) {
     bird.rotation -= 0.4;
   }
@@ -172,6 +179,42 @@ const animateBirdPlay = () => {
     bird.y = bird.height / 2;
     bird.vy = 0;
   }
+};
+
+const checkScore = () => {
+  pipes.forEach((pipe) => {
+    if (pipe !== lastPipe && (Math.abs(pipe.x + pipe.width) - (bird.x + (bird.width / 2))) < 1) {
+      lastPipe = pipe;
+      gameScore += 1;
+    }
+  });
+};
+
+const displayScore = (score) => {
+  const digits = String(score)
+    .split('')
+    .map(d => `${d}.png`);
+
+  scoreContainer.removeChildren();
+
+  digits.forEach((digit) => {
+    const sprite = new Sprite(id[digit]);
+    let lastChildWidth = 0;
+    let lastChildX = 0;
+
+    if (scoreContainer.children.length > 0) {
+      const lastChild = scoreContainer.getChildAt(scoreContainer.children.length - 1);
+      lastChildWidth = lastChild.width;
+      lastChildX = lastChild.x;
+    }
+
+    sprite.x = lastChildX + lastChildWidth + 1;
+    scoreContainer.addChild(sprite);
+    stage.setChildIndex(scoreContainer, stage.children.length - 1);
+  });
+
+  // Center the scoreContainer
+  scoreContainer.x = (renderer.width / 4) - (scoreContainer.width / 2);
 };
 
 const checkCollisions = () => {
@@ -192,11 +235,12 @@ const checkCollisions = () => {
 
   pipes.forEach((pipe) => {
     // Between pipe space in X
-    if (birdRightX > pipe.x && birdLeftX < pipe.x + pipe.width) {
+    if (birdRightX > pipe.x + 5 && birdLeftX < pipe.x + pipe.width - 5) {
       const upPipe = pipe.children[0];
       const downPipe = pipe.children[1];
 
-      if (birdTopY < downPipe.getGlobalPosition().y - currentGapSize - 1 || birdBottomY > upPipe.getGlobalPosition().y + upPipe.height + currentGapSize + 1) {
+      if (birdTopY < downPipe.getGlobalPosition().y - currentGapSize - 5
+          || birdBottomY > upPipe.getGlobalPosition().y + upPipe.height + currentGapSize + 5) {
         collided = true;
       }
     }
@@ -209,7 +253,7 @@ const checkCollisions = () => {
 const animateGround = (speed) => {
   floor.x -= speed;
 
-  if (floor.x < -23) {
+  if (floor.x < -23.5) {
     floor.x = 0;
   }
 };
@@ -226,6 +270,9 @@ const prePlay = () => {
 };
 
 const play = () => {
+  // Add time
+  gameTime += 1;
+
   // Animate the bird
   animateBirdPlay();
 
@@ -240,18 +287,72 @@ const play = () => {
 
   // Check for collisions
   if (checkCollisions() === true) {
-    state = lost;
+    bird.vy = 0;
+    state = preLost;
   }
+
+  // Make gaps smaller
+  if (currentGapSize > 48) {
+      currentGapSize -= 0.01
+  }
+  // Make pipes closer together
+  if (PIPE_SEPARATION > renderer.width * 0.35) {
+    PIPE_SEPARATION -= 0.075;
+  }
+  // Speed up the ground
+  if (gameSpeed < 1.3) {
+    gameSpeed += 0.0002;
+  }
+
+  if (gameTime % DAY_LENGTH === DAY_LENGTH - 1) {
+    isDay = !isDay;
+  }
+
+  if (isDay) {
+    if (background.alpha < 1) {
+      background.alpha += 0.005;
+    }
+  }
+
+  if (!isDay) {
+    if (background.alpha > 0) {
+      background.alpha -= 0.005;
+    }
+  }
+
+  checkScore();
+
+  displayScore(gameScore);
 };
 
 const lost = () => {
-  bird.ay = 0;
-    bird.vy = 0;
-    gameSpeed = 0;
+    // Animate the bird
+    animateBirdPlay();
 
-    // Remove the fly click listener
-    renderer.view.removeEventListener('click', flyClickHandler);
-    document.removeEventListener('keypress', flySpaceHandler);
+    // Prevent phasing through floor
+    checkCollisions();
+};
+
+const preLost = () => {
+  gameSpeed = 0;
+
+  // Remove the fly click listener
+  renderer.view.removeEventListener('click', flyClickHandler);
+  document.removeEventListener('keypress', flySpaceHandler);
+
+  gameOver = new Sprite(id['game-over.png']);
+  gameOver.x = (renderer.width / 4) - (gameOver.width / 2);
+  gameOver.y = (renderer.height / 4) - 60;
+  stage.addChild(gameOver);
+
+  document.addEventListener('keypress', function handler(event) {
+    if (event.which === 32) {
+      document.removeEventListener('keypress', handler);
+      reset();
+    }
+  });
+
+  state = lost;
 };
 
 /**
@@ -281,11 +382,31 @@ const prePlaySetup = () => {
 // Ensures pixels are scaled up
 // PIXI.SCALE_MODES.DEFAULT = PIXI.SCALE_MODES.NEAREST;
 
+const reset = () => {
+  stage.removeChildren();
+  cancelAnimationFrame(animationId);
+
+  init();
+};
+
 const init = () => {
+  gameTime = 0;
+  isDay = true;
+  birdAnimationStatesIterator.animationState = -1;
+  PIPE_SEPARATION = renderer.width * 1;
+  gameSpeed = 1;
+  currentGapSize = 70;
+  gameScore = 0;
+  pipes = [];
+
   // Object which refers to sprites in atlas
   id = loader.resources['public/images/sprites.json'].textures;
 
-  // Adds background
+  // Adds night background
+  darkBackground = new Sprite(id['night-bg.png']);
+  stage.addChild(darkBackground);
+
+  // Adds day background
   background = new Sprite(id['day-bg.png']);
   stage.addChild(background);
 
@@ -296,12 +417,12 @@ const init = () => {
 
   // Adds bird
   bird = new Sprite(id[birdAnimationStates[0]]);
-  bird.y = (OPEN_SPACE_HEIGHT / 2) - (bird.height / 2);
-  bird.x = (stage.width / 2) - (bird.width);
+  bird.y = (OPEN_SPACE_HEIGHT / 2) - (bird.height / 2) + 10;
+  bird.x = (stage.width / 2) - (40);
   bird.pivot.set(bird.width / 2, bird.height / 2);
   // Bird physics properties
   bird.vy = 0;
-  bird.ay = 0.1;
+  bird.ay = 0.12;
   stage.addChild(bird);
 
   // Adds a pipe
@@ -309,6 +430,14 @@ const init = () => {
   pipeContainer.x = renderer.width;
   pipes.push(pipeContainer);
   stage.addChild(pipeContainer);
+
+  // Adds a score container + scores
+  scoreContainer = new Container();
+  const zeroNum = new Sprite(id['0.png']);
+  scoreContainer.x = (renderer.width / 4) - ((zeroNum.width / 2) - 1);
+  scoreContainer.y = OPEN_SPACE_HEIGHT / 10;
+  scoreContainer.addChild(zeroNum);
+  stage.addChild(scoreContainer);
 
   state = prePlaySetup;
 
